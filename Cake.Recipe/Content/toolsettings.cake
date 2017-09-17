@@ -11,6 +11,7 @@ public static class ToolSettings
     public static MSBuildToolVersion BuildMSBuildToolVersion { get; private set; }
     public static int MaxCpuCount { get; private set; }
     public static DirectoryPath OutputDirectory { get; private set; }
+    public static string InstallDotNetSdkVersion { get; private set; }
 
     public static void SetToolSettings(
         ICakeContext context,
@@ -24,7 +25,8 @@ public static class ToolSettings
         DirectoryPath outputDirectory = null,
         string[] dupFinderExcludeFilesByStartingCommentSubstring = null,
         int? dupFinderDiscardCost = null,
-        bool? dupFinderThrowExceptionOnFindingDuplicates = null
+        bool? dupFinderThrowExceptionOnFindingDuplicates = null,
+        string installDotNetSdkVersion = null;
     )
     {
         context.Information("Setting up tools...");
@@ -47,5 +49,6 @@ public static class ToolSettings
         BuildMSBuildToolVersion = buildMSBuildToolVersion;
         MaxCpuCount = maxCpuCount ?? 0;
         OutputDirectory = outputDirectory;
+        InstallDotNetSdkVersion = installDotNetSdkVersion;
     }
 }

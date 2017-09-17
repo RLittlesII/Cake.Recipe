@@ -36,6 +36,7 @@ public class BuildTasks
     public CakeTaskBuilder<ActionTask> InstallReportGeneratorTask { get; set; }
     public CakeTaskBuilder<ActionTask> InstallReportUnitTask { get; set; }
     public CakeTaskBuilder<ActionTask> InstallOpenCoverTask { get; set; }
+    public CakeTaskBuilder<ActionTask> InstallDotNetCoreTask { get; set; }
     public CakeTaskBuilder<ActionTask> TestNUnitTask { get; set; }
     public CakeTaskBuilder<ActionTask> TestxUnitTask { get; set; }
     public CakeTaskBuilder<ActionTask> TestMSTestTask { get; set; }
