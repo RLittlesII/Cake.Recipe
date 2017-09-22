@@ -1,14 +1,23 @@
+/*
+What are we trying to accompish
+
+Detect current runtime env (Windows, Linux, OSX)
+Call appropriate command shell (bash, powershell)
+Build an argument string based on shell type
+Accept incoming install script (default to a specific version)
+Install in either local or global (depending on user designation)
+*/
+
 BuildParameters.Tasks.InstallDotNetCoreTask = Task("InstallDotNetCoreTask")
-.WithCriteria(ToolSettings.InstallDotNetSdkVersion != null)
-.Does(() =>
-{
-        InstallDotNetSdk(env, buildPlan,
-            version: buildPlan.DotNetVersion,
-            installFolder: env.Folders.DotNetSdk);
-});
+    .WithCriteria(ToolSettings.InstallDotNetSdkVersion != null)
+    .Does((context) =>
+        {
+            // Gets the dotnet install variables required to install the tool.
+            var dotnetInstall = DotNetInstall.Load(context);
+        });
 
 
-void InstallDotNetSdk(BuildEnvironment env, BuildPlan plan, string version, string installFolder = "./.donet")
+void InstallDotNetSdk(BuildEnvironment env, DotNetInstall plan, string version, string installFolder = "./.donet")
 {
     if (!DirectoryHelper.Exists(installFolder))
     {
@@ -46,86 +55,87 @@ void InstallDotNetSdk(BuildEnvironment env, BuildPlan plan, string version, stri
     Run(env.ShellCommand, $"{env.ShellArgument} {scriptFilePath} {string.Join(" ", argList)}").ExceptionOnError($"Failed to Install .NET Core SDK {version}");
 }
 
-public class BuildEnvironment
-{
-    public string WorkingDirectory { get; }
-    public Folders Folders { get; }
-
-    public string DotNetCommand { get; }
-    public string LegacyDotNetCommand { get; }
-
-    public string ShellCommand { get; }
-    public string ShellArgument { get; }
-    public string ShellScriptFileExtension { get; }
-
-    public MonoRuntime[] MonoRuntimes { get; }
-    public MonoRuntime CurrentMonoRuntime { get; }
-
-    public BuildEnvironment(bool useGlobalDotNetSdk)
-    {
-        this.WorkingDirectory = PathHelper.GetFullPath(
-            System.IO.Directory.GetCurrentDirectory());
-        this.Folders = new Folders(this.WorkingDirectory);
-
-        this.DotNetCommand = useGlobalDotNetSdk
-            ? "dotnet"
-            : PathHelper.Combine(this.Folders.DotNetSdk, "dotnet");
-
-        this.LegacyDotNetCommand = PathHelper.Combine(this.Folders.LegacyDotNetSdk, "dotnet");
-
-        this.ShellCommand = Platform.Current.IsWindows ? "powershell" : "bash";
-        this.ShellArgument = Platform.Current.IsWindows ? "-NoProfile /Command" : "-C";
-        this.ShellScriptFileExtension = Platform.Current.IsWindows ? "ps1" : "sh";
-
-        this.MonoRuntimes = new []
-        {
-            new MonoRuntime("osx", this.Folders.MonoRuntimeMacOS, "mono.osx"),
-            new MonoRuntime("linux-x86", this.Folders.MonoRuntimeLinux32, "mono.linux-x86"),
-            new MonoRuntime("linux-x64", this.Folders.MonoRuntimeLinux64, "mono.linux-x86_64")
-        };
-
-        if (Platform.Current.IsMacOS)
-        {
-            this.CurrentMonoRuntime = this.MonoRuntimes[0];
-        }
-        else if (Platform.Current.IsLinux && Platform.Current.Is32Bit)
-        {
-            this.CurrentMonoRuntime = this.MonoRuntimes[1];
-        }
-        else if (Platform.Current.IsLinux && Platform.Current.Is64Bit)
-        {
-            this.CurrentMonoRuntime = this.MonoRuntimes[2];
-        }
-    }
-}
-
 /// <summary>
 ///  Class representing build.json
 /// </summary>
-public class BuildPlan
+public class DotNetInstall
 {
+    public DirectoryPath WorkingDirectory { get; }
+    public string DotNetSdkPath { get; } = ".dotnet";
+    public static string DotNetCommand { get; private set; }
+    public static string ShellCommand { get; private set; }
+    public static string ShellArgument { get; private set; }
+    public static string ShellScriptFileExtension { get; private set; }
+
     public string DotNetInstallScriptURL { get; set; }
     public string DotNetChannel { get; set; }
     public string DotNetVersion { get; set; }
     public string LegacyDotNetVersion { get; set; }
-    public string RequiredMonoVersion { get; set; }
-    public string DownloadURL { get; set; }
-    public string MonoRuntimeMacOS { get; set; }
-    public string MonoRuntimeLinux32 { get; set; }
-    public string MonoRuntimeLinux64 { get; set; }
-    public string MonoFramework { get; set; }
-    public string MonoMSBuildRuntime { get; set; }
-    public string MonoMSBuildLib { get; set; }
-    public string[] HostProjects { get; set; }
-    public string[] TestProjects { get; set; }
-    public string[] TestAssets { get; set; }
-    public string[] LegacyTestAssets { get; set; }
 
-    public static BuildPlan Load(BuildEnvironment env)
+    public bool IsWindows => _platform == PlatformFamily.Windows;
+    public bool IsMacOS => _platform == PlatformFamily.OSX;
+    public bool IsLinux => _platform == PlatformFamily.Linux;
+    public bool Is32Bit => !_is64Bit;
+    public bool Is64Bit => _is64Bit;
+    
+
+    private PlatformFamily _platform;
+    private bool _is64Bit;
+
+    public static DotNetInstall Load(ICakeContext context, bool useGlobalDotNetSdk = true)
     {
-        var buildJsonPath = PathHelper.Combine(env.WorkingDirectory, "build.json");
-        return JsonConvert.DeserializeObject<BuildPlan>(
-            System.IO.File.ReadAllText(buildJsonPath));
+        return Load(context.Environment);
+    }
+
+    public static DotNetInstall Load(ICakeEnvironment environment, bool useGlobalDotNetSdk = true)
+    {
+        
+        _platform = environment.Platform.Family;
+        _is64Bit = environment.Is64BitOperativeSystem();
+        
+        this.WorkingDirectory = environment.WorkingDirectory;
+
+        this.DotNetCommand = useGlobalDotNetSdk ? "dotnet" : PathHelper.Combine(this.WorkingDirectory.FullPath, ".dotnet", "dotnet");
+
+        this.ShellCommand = this.IsWindows ? "powershell" : "bash"; 
+        this.ShellArgument = this.IsWindows ? "-NoProfile /Command" : "-C";
+        this.ShellScriptFileExtension = this.IsWindows ? "ps1" : "sh";
+        
+        var buildJsonPath = PathHelper.Combine(environment.WorkingDirectory, "build.json");
+        return JsonConvert.DeserializeObject<DotNetInstall>(System.IO.File.ReadAllText(buildJsonPath));
+    }
+
+    public static DotNetInstall DotNetInstall(ICakeEnvironment environment)
+    {
+        var buildJsonPath = PathHelper.Combine(environment.WorkingDirectory, "build.json");
+        return JsonConvert.DeserializeObject<DotNetInstall>(System.IO.File.ReadAllText(buildJsonPath));
+    }
+
+    private DotNetInstall Initialize(DotNetInstall dotnet)
+    {
+        DotNetInstallScriptURL = dotnet.DotNetInstallScriptURL;
+        DotNetChannel = dotnet.DotNetChannel;
+        DotNetVersion = dotnet.DotNetVersion;
+        LegacyDotNetVersion = dotnet.LegacyDotNetVersion;
+    }
+}
+
+public class InstallPlatform
+{    
+    public bool IsWindows => _platform == PlatformFamily.Windows;
+    public bool IsMacOS => _platform == PlatformFamily.OSX;
+    public bool IsLinux => _platform == PlatformFamily.Linux;
+
+    public bool Is32Bit => !_is64Bit;
+    public bool Is64Bit => _is64Bit;
+
+    private PlatformFamily _platform;
+    private bool _is64Bit;
+
+    public InstallPlatform(ICakeEnvironment environment)
+    {
+        _platform = environment.Platform.Family;
+        _is64Bit = environment.Is64BitOperativeSystem();
     }
 }
 
