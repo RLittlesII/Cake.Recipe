@@ -13,6 +13,7 @@ public class BuildTasks
     public CakeTaskBuilder<ActionTask> DotNetCoreRestoreTask { get; set; }
     public CakeTaskBuilder<ActionTask> BuildTask { get; set; }
     public CakeTaskBuilder<ActionTask> DotNetCoreBuildTask { get; set; }
+    public CakeTaskBuilder<ActionTask> DotNetCoreInstallTask { get; set; }
     public CakeTaskBuilder<ActionTask> PackageTask { get; set; }
     public CakeTaskBuilder<ActionTask> DefaultTask { get; set; }
     public CakeTaskBuilder<ActionTask> AppVeyorTask { get; set; }
@@ -36,7 +37,6 @@ public class BuildTasks
     public CakeTaskBuilder<ActionTask> InstallReportGeneratorTask { get; set; }
     public CakeTaskBuilder<ActionTask> InstallReportUnitTask { get; set; }
     public CakeTaskBuilder<ActionTask> InstallOpenCoverTask { get; set; }
-    public CakeTaskBuilder<ActionTask> InstallDotNetCoreTask { get; set; }
     public CakeTaskBuilder<ActionTask> TestNUnitTask { get; set; }
     public CakeTaskBuilder<ActionTask> TestxUnitTask { get; set; }
     public CakeTaskBuilder<ActionTask> TestMSTestTask { get; set; }

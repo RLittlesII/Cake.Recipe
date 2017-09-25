@@ -1,39 +1,39 @@
 /*
 What are we trying to accompish
 
-Detect current runtime env (Windows, Linux, OSX)
+Detect current runtime environment (Windows, Linux, OSX)
 Call appropriate command shell (bash, powershell)
 Build an argument string based on shell type
 Accept incoming install script (default to a specific version)
 Install in either local or global (depending on user designation)
 */
 
-BuildParameters.Tasks.InstallDotNetCoreTask = Task("InstallDotNetCoreTask")
+BuildParameters.Tasks.DotNetCoreInstallTask = Task("Install-DotNetCore")
     .WithCriteria(ToolSettings.InstallDotNetSdkVersion != null)
+    .WithCriteria(BuildParameters.ShouldRunDotNetCoreInstall)
     .Does((context) =>
         {
             // Gets the dotnet install variables required to install the tool.
-            var dotnetInstall = DotNetInstall.Load(context);
+            DotNetInstall.Load(context);
+
+            InstallDotNetSdk(DotNetInstall, "1.04");
         });
 
 
-void InstallDotNetSdk(BuildEnvironment env, DotNetInstall plan, string version, string installFolder = "./.donet")
+void InstallDotNetSdk(DotNetInstall dotnetInstall, string version, DirectoryPath installFolder = "./.donet")
 {
-    if (!DirectoryHelper.Exists(installFolder))
-    {
-        DirectoryHelper.Create(installFolder);
-    }
+    EnsureDirectoryExists(installFolder);
 
-    var scriptFileName = $"dotnet-install.{env.ShellScriptFileExtension}";
-    var scriptFilePath = CombinePaths(installFolder, scriptFileName);
-    var url = $"{plan.DotNetInstallScriptURL}/{scriptFileName}";
+    var scriptFileName = $"dotnet-install.{dotnetInstall.ShellScriptFileExtension}";
+    var scriptFilePath = installFolder.CombineWithFilePath(scriptFileName);
+    var url = $"{dotnetInstall.DotNetInstallScriptURL}/{scriptFileName}";
 
     using (var client = new WebClient())
     {
         client.DownloadFile(url, scriptFilePath);
     }
 
-    if (!Platform.Current.IsWindows)
+    if (!dotnetInstall.IsWindows)
     {
         Run("chmod", $"+x '{scriptFilePath}'");
     }
@@ -41,7 +41,7 @@ void InstallDotNetSdk(BuildEnvironment env, DotNetInstall plan, string version, 
     var argList = new List<string>();
 
     argList.Add("-Channel");
-    argList.Add(plan.DotNetChannel);
+    argList.Add(dotnetInstall.DotNetChannel);
 
     if (!string.IsNullOrEmpty(version))
     {
@@ -52,13 +52,13 @@ void InstallDotNetSdk(BuildEnvironment env, DotNetInstall plan, string version, 
     argList.Add("-InstallDir");
     argList.Add(installFolder);
 
-    Run(env.ShellCommand, $"{env.ShellArgument} {scriptFilePath} {string.Join(" ", argList)}").ExceptionOnError($"Failed to Install .NET Core SDK {version}");
+    Run(dotnetInstall.ShellCommand, $"{dotnetInstall.ShellArgument} {scriptFilePath} {string.Join(" ", argList)}").ExceptionOnError($"Failed to Install .NET Core SDK {version}");
 }
 
 /// <summary>
 ///  Class representing build.json
 /// </summary>
-public class DotNetInstall
+public static class DotNetInstall
 {
     public DirectoryPath WorkingDirectory { get; }
     public string DotNetSdkPath { get; } = ".dotnet";
@@ -87,55 +87,45 @@ public class DotNetInstall
         return Load(context.Environment);
     }
 
-    public static DotNetInstall Load(ICakeEnvironment environment, bool useGlobalDotNetSdk = true)
+    public static DotNetInstall Load(ICakeEnvironment environment, FilePath buildConfig, bool useGlobalDotNetSdk = true)
     {
-        
-        _platform = environment.Platform.Family;
-        _is64Bit = environment.Is64BitOperativeSystem();
-        
-        this.WorkingDirectory = environment.WorkingDirectory;
+        if (environment == null)
+        {
+            throw new ArgumentNullException(nameof(environment));
+        }
 
-        this.DotNetCommand = useGlobalDotNetSdk ? "dotnet" : PathHelper.Combine(this.WorkingDirectory.FullPath, ".dotnet", "dotnet");
-
-        this.ShellCommand = this.IsWindows ? "powershell" : "bash"; 
-        this.ShellArgument = this.IsWindows ? "-NoProfile /Command" : "-C";
-        this.ShellScriptFileExtension = this.IsWindows ? "ps1" : "sh";
+        if (buildConfig == null)
+        {
+            throw new ArguementNullException(nameof(buildConfig));
+        }
+    
+        var buildJsonPath = buildConfig.FullPath;
         
-        var buildJsonPath = PathHelper.Combine(environment.WorkingDirectory, "build.json");
         return JsonConvert.DeserializeObject<DotNetInstall>(System.IO.File.ReadAllText(buildJsonPath));
     }
 
-    public static DotNetInstall DotNetInstall(ICakeEnvironment environment)
+    public static DotNetInstal Load(ICakeEnvironment environment, bool useGlobalDotNetSdk = true)
     {
-        var buildJsonPath = PathHelper.Combine(environment.WorkingDirectory, "build.json");
-        return JsonConvert.DeserializeObject<DotNetInstall>(System.IO.File.ReadAllText(buildJsonPath));
-    }
+        if (environment == null)
+        {
+            throw new ArgumentNullException(nameof(environment));
+        }
 
-    private DotNetInstall Initialize(DotNetInstall dotnet)
-    {
-        DotNetInstallScriptURL = dotnet.DotNetInstallScriptURL;
-        DotNetChannel = dotnet.DotNetChannel;
-        DotNetVersion = dotnet.DotNetVersion;
-        LegacyDotNetVersion = dotnet.LegacyDotNetVersion;
-    }
-}
+        var dotnetInstall = new DotNetInstall();
 
-public class InstallPlatform
-{    
-    public bool IsWindows => _platform == PlatformFamily.Windows;
-    public bool IsMacOS => _platform == PlatformFamily.OSX;
-    public bool IsLinux => _platform == PlatformFamily.Linux;
-
-    public bool Is32Bit => !_is64Bit;
-    public bool Is64Bit => _is64Bit;
-
-    private PlatformFamily _platform;
-    private bool _is64Bit;
-
-    public InstallPlatform(ICakeEnvironment environment)
-    {
         _platform = environment.Platform.Family;
         _is64Bit = environment.Is64BitOperativeSystem();
+
+        dotnetInstall.WorkingDirectory = environment.WorkingDirectory;
+
+        dotnetInstall.DotNetCommand = useGlobalDotNetSdk ? "dotnet" : PathHelper.Combine(this.WorkingDirectory.FullPath, ".dotnet", "dotnet");
+        dotnetInstall.ShellCommand = this.IsWindows ? "powershell" : "bash"; 
+        dotnetInstall.ShellArgument = this.IsWindows ? "-NoProfile /Command" : "-C";
+        dotnetInstall.ShellScriptFileExtension = this.IsWindows ? "ps1" : "sh";
+
+        this = dotnetInstall;
+
+        return dotnetInstall;
     }
 }
 

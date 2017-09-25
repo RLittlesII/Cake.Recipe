@@ -542,6 +542,7 @@ public class Builder
             {
                 BuildParameters.Tasks.DotNetCoreBuildTask.IsDependentOn("Transifex-Pull-Translations");
             }
+            BuildParameters.Tasks.DotNetCoreCleanTask.IsDependentOn("Install-DotNetCore");
             BuildParameters.Tasks.TestTask.IsDependentOn(prefix + "Test");
             BuildParameters.Tasks.InstallOpenCoverTask.IsDependentOn("Install-ReportGenerator");
             BuildParameters.Tasks.PackageTask.IsDependentOn(prefix + "Pack");
